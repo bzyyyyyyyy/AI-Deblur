@@ -2,11 +2,11 @@ import os
 import json
 from core.data_processor import DataLoad
 from core.model import Deblur
+from core.early_stopping import EarlyStopping
 import torch
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 import matplotlib.pyplot as plt
-import time
 import cv2
 
 unloader = transforms.ToPILImage()
@@ -55,6 +55,8 @@ def main():
 	configs = json.load(open('config.json', 'r'))
 	if not os.path.exists(configs['model']['save_dir']): os.makedirs(configs['model']['save_dir'])
 
+	early_stopping = EarlyStopping(configs['model']['save_dir'])
+
 	# data
 	data = DataLoad(configs['data']['dirpath'], configs['data']['train_test_split'])
 	train_data_size = len(data.data_train)
@@ -72,6 +74,7 @@ def main():
 
 	# loss_function
 	loss_fn = torch.nn.SmoothL1Loss()
+	# loss_fn = torch.nn.MSELoss()
 	if torch.cuda.is_available():
 		print('GPU')
 		loss_fn = loss_fn.cuda()
@@ -108,9 +111,17 @@ def main():
 				optimizer.step()
 
 				total_train_step += 1
-				if total_train_step % 100 == 0:
-					print("train：{}, Loss: {}".format(total_train_step, loss.item()))
+
+				total_train_accuracy = 0
+				for n in range(len(outputs)):
+					accuracy = float(classify_hist_with_split(tensor_to_np(outputs[n]), tensor_to_np(targets[n])))
+					total_train_accuracy += accuracy
+
+				if total_train_step % 10 == 0:
+					train_accuracy = total_train_accuracy / len(outputs)
+					print("train：{}, Loss: {}, Accuracy: {}".format(total_train_step, loss.item(), train_accuracy))
 					writer.add_scalar("train_loss", loss.item(), total_train_step)
+					writer.add_scalar("train_accuracy", train_accuracy, total_train_step)
 
 			# start testing
 			deblur.eval()
@@ -125,9 +136,9 @@ def main():
 					outputs = deblur(imgs)
 					loss = loss_fn(outputs, targets)
 					total_test_loss += loss.item()
-					accuracy = float(classify_hist_with_split(tensor_to_np(outputs[0]), tensor_to_np(targets[0])))
-					print(accuracy)
-					total_accuracy += accuracy
+					for n in range(len(outputs)):
+						accuracy = float(classify_hist_with_split(tensor_to_np(outputs[n]), tensor_to_np(targets[n])))
+						total_accuracy += accuracy
 
 			print("total test loss: {}".format(total_test_loss))
 			print("total test accuracy: {}".format(total_accuracy / test_data_size))
@@ -135,8 +146,13 @@ def main():
 			writer.add_scalar("test_accuracy", total_accuracy / test_data_size, total_test_step)
 			total_test_step += 1
 
-			torch.save(deblur, f"{configs['model']['save_dir']}\\deblur_{i}.pth")
-			print("model saved")
+			# torch.save(deblur, f"{configs['model']['save_dir']}\\deblur_{i}.pth")
+			# print("model saved")
+
+			early_stopping(total_test_loss, deblur)
+			if early_stopping.early_stop:
+				print("Early stopping")
+				break
 
 
 if __name__ == '__main__':
