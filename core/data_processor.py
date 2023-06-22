@@ -1,4 +1,3 @@
-from typing import List
 from PIL import Image
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
@@ -15,24 +14,24 @@ class DataLoad:
         self.data_train = self.data_paths[:i_split]
         self.data_test = self.data_paths[i_split:]
         self.in_trans = transforms.Compose([
-            transforms.TenCrop(256),
-            transforms.Resize(128),
-            transforms.Lambda(lambda crops: torch.stack([transforms.ToTensor()(crop) for crop in crops])),
-            transforms.ToTensor()
+            # transforms.Resize(128),
+            transforms.GaussianBlur(21),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485,0.456,0.406], [0.229,0.224,0.225])
         ])
         self.out_trans = transforms.Compose([
-            transforms.CenterCrop(256),
-            transforms.Lambda(lambda crops: torch.stack([transforms.ToTensor()(crop) for crop in crops])),
             transforms.ToTensor()
         ])
 
     def get_train_dataloader(self):
         train_dataset = MyData(self.dirpath, self.data_train, self.in_trans, self.out_trans)
-        return DataLoader(train_dataset, batch_size=10, num_workers=2)
+        for i in range(7):
+            train_dataset += MyData(self.dirpath, self.data_train, self.in_trans, self.out_trans, trans=transforms.RandomCrop(128))
+        return DataLoader(train_dataset, batch_size=16, num_workers=2)
 
     def get_test_dataloader(self):
         test_dataset = MyData(self.dirpath, self.data_test, self.in_trans, self.out_trans)
-        return DataLoader(test_dataset, batch_size=10, num_workers=2)
+        return DataLoader(test_dataset, batch_size=16, num_workers=2)
 
     def __data_paths(self) -> list:
         rst = []
@@ -43,22 +42,24 @@ class DataLoad:
             except:
                 pass
             else:
-                if img.width >= 256 and img.height >= 256:
+                if img.width >= 128 and img.height >= 128:
                     rst.append(file)
         return rst
 
 
 class MyData(Dataset):
 
-    def __init__(self, dirpath, datas: list, in_trans, out_trans):
+    def __init__(self, dirpath, datas: list, in_trans, out_trans, trans=transforms.CenterCrop(128)):
         self.dirpath = dirpath
         self.datas = datas
         self.in_trans = in_trans
         self.out_trans = out_trans
+        self.trans = trans
 
     def __getitem__(self, item):
         img_path = os.path.join(self.dirpath, self.datas[item])
         img = Image.open(img_path).convert('RGB')
+        img = self.trans(img)
         imgs = self.in_trans(img)
         targets = self.out_trans(img)
         return [imgs, targets]

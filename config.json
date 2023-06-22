@@ -5,7 +5,7 @@
 	},
 	"training": {
 		"epochs": 100,
-		"learning_rate": 0.5
+		"learning_rate": 0.1
 	},
 	"model": {
 		"save_dir": "saved_models"

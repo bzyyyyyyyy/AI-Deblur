@@ -8,6 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 import matplotlib.pyplot as plt
 import cv2
+import math
 
 unloader = transforms.ToPILImage()
 
@@ -55,7 +56,7 @@ def main():
 	configs = json.load(open('config.json', 'r'))
 	if not os.path.exists(configs['model']['save_dir']): os.makedirs(configs['model']['save_dir'])
 
-	early_stopping = EarlyStopping(configs['model']['save_dir'])
+	early_stopping = EarlyStopping(configs['model']['save_dir'], 4)
 
 	# data
 	data = DataLoad(configs['data']['dirpath'], configs['data']['train_test_split'])
@@ -119,9 +120,10 @@ def main():
 
 				if total_train_step % 10 == 0:
 					train_accuracy = total_train_accuracy / len(outputs)
-					print("train：{}, Loss: {}, Accuracy: {}".format(total_train_step, loss.item(), train_accuracy))
 					writer.add_scalar("train_loss", loss.item(), total_train_step)
 					writer.add_scalar("train_accuracy", train_accuracy, total_train_step)
+					if total_train_step % 100 == 0:
+						print("train：{}, Loss: {}, Accuracy: {}".format(total_train_step, loss.item(), train_accuracy))
 
 			# start testing
 			deblur.eval()
@@ -149,7 +151,7 @@ def main():
 			# torch.save(deblur, f"{configs['model']['save_dir']}\\deblur_{i}.pth")
 			# print("model saved")
 
-			early_stopping(total_test_loss, deblur)
+			early_stopping(math.floor(total_test_loss * 1000), deblur)
 			if early_stopping.early_stop:
 				print("Early stopping")
 				break
